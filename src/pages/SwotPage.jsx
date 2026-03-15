@@ -1240,19 +1240,51 @@ const SwotPage = () => {
     return questions.every((q) => responses[section]?.[q.id]);
   };
 
-  const handleSubmit = () => {
+  const WEBHOOK_URL =
+    "https://services.leadconnectorhq.com/hooks/MJHmir5Xkxz4EWxcOEj3/webhook-trigger/23EaRw19TjCgaK8wGoJ3";
+
+  const handleSubmit = async () => {
     const allSectionsCompleted = swotData.swotQuestions.every((section) =>
       isSectionCompleted(section.section)
     );
 
-    if (allSectionsCompleted) {
-      setSubmitted(true);
-      setActiveTab(0); // Reset to "Strengths" section
-      scrollToTop(); // Scroll to the top of the results section
-    } else {
-      setHighlightUnanswered(true); // Enable highlight for unanswered questions
+    if (!allSectionsCompleted) {
+      setHighlightUnanswered(true);
       alert("Please complete all sections before submitting.");
+      return;
     }
+
+    const answersArray = [];
+    swotData.swotQuestions.forEach(({ section, questions }) => {
+      questions.forEach(({ id, question }) => {
+        const selected = responses[section]?.[id];
+        if (selected != null) {
+          answersArray.push({ section, questionId: id, question, selected });
+        }
+      });
+    });
+
+    const payload = {
+      fullName: "",
+      email: "",
+      phone: "",
+      formType: "swot",
+      answers: answersArray,
+    };
+
+    try {
+      await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error("Webhook error:", err);
+    }
+
+    setSubmitted(true);
+    setActiveTab(0);
+    scrollToTop();
   };
 
   const handleNextTab = () => {

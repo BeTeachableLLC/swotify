@@ -1,6 +1,13 @@
 import React from "react";
 
 const Question = ({ question, onAnswer, selectedAnswer }) => {
+  if (!question || !question.options) {
+    return (
+      <div className="text-center" style={{ color: "white", padding: "20px" }}>
+        Loading...
+      </div>
+    );
+  }
   return (
     <div className="text-center">
       <h2

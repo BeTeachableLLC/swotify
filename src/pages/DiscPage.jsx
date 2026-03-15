@@ -903,11 +903,38 @@ const App = () => {
     return resultCounts;
   };
 
-  const handleSubmit = () => {
-    console.log("Quiz Submitted", answers);
+  const WEBHOOK_URL =
+    "https://services.leadconnectorhq.com/hooks/MJHmir5Xkxz4EWxcOEj3/webhook-trigger/23EaRw19TjCgaK8wGoJ3";
+
+  const handleSubmit = async () => {
     if (!userDetails.name || !userDetails.email || !userDetails.phone) {
       alert("Please fill in all fields before submitting.");
       return;
+    }
+    const allQuestions = questionsUpdate.flatMap((s) => s.questions);
+    const answersArray = Object.entries(answers).map(([questionId, selectedOption]) => {
+      const q = allQuestions.find((qu) => qu.id === parseInt(questionId, 10));
+      return {
+        questionId: parseInt(questionId, 10),
+        question: q?.question ?? "",
+        selected: selectedOption,
+      };
+    });
+    const payload = {
+      fullName: userDetails.name.trim(),
+      email: userDetails.email.trim(),
+      phone: userDetails.phone.trim(),
+      formType: "disc",
+      answers: answersArray,
+    };
+    try {
+      await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error("Webhook error:", err);
     }
     setShowResults(true);
   };

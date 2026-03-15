@@ -7,7 +7,8 @@ const handleDownloadPdf = (
   weaknessesList,
   opportunitiesList,
   threatsList,
-  user
+  user,
+  options = {}
 ) => {
   const doc = new jsPDF();
 
@@ -385,7 +386,9 @@ const handleDownloadPdf = (
 
   addFooter(doc);
 
-  // Save the PDF
+  if (options.returnBlob) {
+    return doc.output("blob");
+  }
   doc.save(user + " " + "SWOT_Analysis_Results.pdf");
 };
 

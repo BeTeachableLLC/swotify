@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import ProgressBar from "./ProgressBar";
 import Question from "./Question";
 import Results from "./Results";
+import handleDownloadPdf from "./handleDownloadPdf";
+
+const PDF_UPLOAD_URL = import.meta.env.VITE_PDF_UPLOAD_URL || "http://localhost:3001";
 
 
 const questionsData = [
@@ -1748,6 +1751,7 @@ const questionsData = [
 
 const Questionnaire = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [showDetailsStep, setShowDetailsStep] = useState(false);
   const [answers, setAnswers] = useState({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1762,6 +1766,7 @@ const Questionnaire = () => {
   let user = formData.fullName;
 
   const totalQuestions = questionsData.length;
+  const currentQuestion = questionsData[currentQuestionIndex];
   // console.log(totalQuestions);
   // console.log(answers);
   // const handleAnswer = (selectedOption) => {
@@ -1877,20 +1882,19 @@ const Questionnaire = () => {
 
     // Check if this was the last question
     if (currentQuestionIndex === totalQuestions - 1) {
-      // Verify all previous questions are answered before showing results
-      const allQuestionsAnswered = Array.from({ length: totalQuestions }).every(
+      const allAnswered = Array.from({ length: totalQuestions }).every(
         (_, index) => updatedAnswers[index]?.questionId
       );
-
-      if (allQuestionsAnswered) {
-        console.log("Final answers:", updatedAnswers);
-        // setShowResults(true);
+      if (allAnswered) {
+        setShowDetailsStep(true);
       } else {
-        // Find first unanswered question
-        const firstUnansweredIndex = Array.from({
-          length: totalQuestions,
-        }).findIndex((_, index) => !updatedAnswers[index]?.questionId);
-        setCurrentQuestionIndex(firstUnansweredIndex);
+        const firstUnansweredIndex = Array.from(
+          { length: totalQuestions },
+          (_, i) => i
+        ).findIndex((i) => !updatedAnswers[i]?.questionId);
+        if (firstUnansweredIndex >= 0 && firstUnansweredIndex < totalQuestions) {
+          setCurrentQuestionIndex(firstUnansweredIndex);
+        }
       }
     } else {
       // Check if the next question's previous question (current - 1) is answered
@@ -1899,66 +1903,122 @@ const Questionnaire = () => {
         updatedAnswers[currentQuestionIndex - 1]?.questionId;
 
       if (canProceed) {
-        // Move to next question after a short delay to ensure state is updated
         setTimeout(() => {
-          setCurrentQuestionIndex((prevIndex) => prevIndex + 1);
+          setCurrentQuestionIndex((prevIndex) =>
+            Math.min(prevIndex + 1, totalQuestions - 1)
+          );
         }, 300);
       } else {
-        // Go back to the unanswered previous question
-        setCurrentQuestionIndex((prevIndex) => prevIndex - 1);
+        setCurrentQuestionIndex((prevIndex) => Math.max(prevIndex - 1, 0));
       }
     }
   };
 
   const handlePrevious = () => {
+    if (showDetailsStep) {
+      setShowDetailsStep(false);
+      return;
+    }
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex((prev) => prev - 1);
     }
   };
 
   const handleFormChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const isFormValid = formData.fullName && formData.email && formData.phone;
-
+  const isFormValid =
+    formData.fullName?.trim() &&
+    formData.email?.trim() &&
+    formData.phone?.trim();
 
   const handleSubmit = async () => {
-    if (isFormValid) {
-      setIsSubmitting(true);
+    const fullName = formData.fullName?.trim() ?? "";
+    const email = formData.email?.trim() ?? "";
+    const phone = formData.phone?.trim() ?? "";
+
+    if (!fullName || !email || !phone) {
+      alert("Please enter Full Name, Email, and Phone before submitting.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const answersList = Array.from({ length: totalQuestions }, (_, i) => answers[i]).filter(
+        (a) => a && a.quadrant
+      );
+      const strength = answersList.filter((a) => a.quadrant === "Strength").length;
+      const weakness = answersList.filter((a) => a.quadrant === "Weakness").length;
+      const threat = answersList.filter((a) => a.quadrant === "Threat").length;
+      const opportunity = answersList.filter((a) => a.quadrant === "Opportunity").length;
+
+      const strengthsList = answersList.filter((a) => a.quadrant === "Strength");
+      const weaknessesList = answersList.filter((a) => a.quadrant === "Weakness");
+      const opportunitiesList = answersList.filter((a) => a.quadrant === "Opportunity");
+      const threatsList = answersList.filter((a) => a.quadrant === "Threat");
+
+      let colouredPdfUrl = "";
       try {
-        // Format answers into plain text
-        const formattedAnswers = Object.values(answers)
-          .map(
-            (answer) =>
-              `Question ${answer.questionId}: ${answer.question}\nAnswer: ${answer.selected}\nResponse: ${answer.response}\nQuadrant: ${answer.quadrant}\n\n`
-          )
-          .join("");
-
-        // Update formData with formatted answers
-        setFormData({ ...formData, answers: formattedAnswers });
-
-        const response = await fetch(
-          "https://services.leadconnectorhq.com/hooks/MJHmir5Xkxz4EWxcOEj3/webhook-trigger/23EaRw19TjCgaK8wGoJ3",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ ...formData, answers: formattedAnswers }),
-          }
+        const pdfBlob = handleDownloadPdf(
+          strengthsList,
+          weaknessesList,
+          opportunitiesList,
+          threatsList,
+          fullName,
+          { returnBlob: true }
         );
-
-        if (response.ok) {
-          setIsSubmitted(true);
-        } else {
-          console.error("Error submitting form");
+        if (pdfBlob) {
+          const formData = new FormData();
+          formData.append("pdf", pdfBlob, `${fullName.replace(/\s+/g, "_")}_SWOT_Analysis_Results.pdf`);
+          const uploadRes = await fetch(`${PDF_UPLOAD_URL}/api/upload-pdf`, {
+            method: "POST",
+            body: formData,
+          });
+          if (uploadRes.ok) {
+            const { url } = await uploadRes.json();
+            colouredPdfUrl = url;
+          }
         }
-      } catch (error) {
-        console.error("Error:", error);
-      } finally {
-        setIsSubmitting(false);
+      } catch (pdfErr) {
+        console.warn("PDF generation or upload failed:", pdfErr);
       }
+
+      const payload = {
+        fullName,
+        email,
+        phone,
+        strength,
+        weakness,
+        threat,
+        opportunity,
+        ...(colouredPdfUrl && { colouredPdfUrl }),
+      };
+
+      const response = await fetch(
+        "https://services.leadconnectorhq.com/hooks/MJHmir5Xkxz4EWxcOEj3/webhook-trigger/23EaRw19TjCgaK8wGoJ3",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.ok) {
+        setIsSubmitted(true);
+      } else {
+        const errText = await response.text();
+        console.error("Error submitting form:", response.status, errText);
+        alert("Submission failed. Please try again or check your connection.");
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Something went wrong. Please check your connection and try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1998,31 +2058,6 @@ const Questionnaire = () => {
           </div> */}
         <div></div>
       </div>
-      {currentQuestionIndex === totalQuestions - 1 && (
-        <div
-          style={{
-            alignItems: "center",
-            padding: "40px",
-            color: "white",
-            height: "60px",
-            width: "100%",
-            position: "relative",
-            top: "0px",
-            left: "-400px",
-            zIndex: 0,
-            marginBottom: "-120px",
-          }}
-          className="headd"
-        >
-          <img
-            src="./logo-white-2.png"
-            alt="logo-img"
-            width={188.78}
-            height={48}
-          />
-          <div></div>
-        </div>
-      )}
       <div
         className="main"
         style={{
@@ -2033,111 +2068,154 @@ const Questionnaire = () => {
         }}
       >
         <ProgressBar
-          progress={(currentQuestionIndex + 1) / totalQuestions}
-          currentStep={currentQuestionIndex + 1}
+          progress={
+            showDetailsStep ? 1 : (currentQuestionIndex + 1) / totalQuestions
+          }
+          currentStep={
+            showDetailsStep ? totalQuestions : currentQuestionIndex + 1
+          }
           totalSteps={totalQuestions}
         />
 
-        <Question
-          question={questionsData[currentQuestionIndex]}
-          onAnswer={handleAnswer}
-          selectedAnswer={answers[currentQuestionIndex]?.selected}
-        />
-
-        {currentQuestionIndex === totalQuestions - 1 && (
+        {showDetailsStep ? (
           <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-start",
-              marginTop: "16px",
-            }}
+            className="details-step"
+            onClick={(e) => e.stopPropagation()}
+            style={{ marginTop: "24px" }}
           >
-            <h3 style={{ color: "white" }}>Enter Your Details</h3>
+            <h2
+              className="quest text-lg font-bold mb-4"
+              style={{
+                fontFamily: "Poppins, sans-serif",
+                marginTop: "40px",
+                maxWidth: "600px",
+                fontSize: "18px",
+                color: "white",
+              }}
+            >
+              All {totalQuestions} questions completed. Enter your details below.
+            </h2>
             <div
               style={{
                 display: "flex",
-                flexDirection: "row",
+                flexDirection: "column",
                 justifyContent: "flex-start",
+                marginTop: "24px",
               }}
-              className="formm"
             >
-              <input
-                type="text"
-                name="fullName"
-                placeholder="Full Name"
-                value={formData.fullName}
-                onChange={handleFormChange}
-                style={{ color: "white" }}
-                required
-              />
-              <br />
-              <input
-                type="email"
-                name="email"
-                placeholder="Email"
-                value={formData.email}
-                onChange={handleFormChange}
-                style={{ color: "white" }}
-                required
-              />
-              <br />
-              <input
-                type="tel"
-                name="phone"
-                placeholder="Phone Number"
-                value={formData.phone}
-                onChange={handleFormChange}
-                style={{ color: "white" }}
-                required
-              />
+              <h3 style={{ color: "white", marginBottom: "8px" }}>
+                Enter Your Details
+              </h3>
+              <div
+                className="formm"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  maxWidth: "400px",
+                }}
+              >
+                <input
+                  type="text"
+                  name="fullName"
+                  placeholder="Full Name"
+                  value={formData.fullName}
+                  onChange={handleFormChange}
+                  style={{ color: "white", padding: "10px" }}
+                  required
+                />
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Email"
+                  value={formData.email}
+                  onChange={handleFormChange}
+                  style={{ color: "white", padding: "10px" }}
+                  required
+                />
+                <input
+                  type="tel"
+                  name="phone"
+                  placeholder="Phone Number"
+                  value={formData.phone}
+                  onChange={handleFormChange}
+                  style={{ color: "white", padding: "10px" }}
+                  required
+                />
+              </div>
             </div>
-            <br />
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-start",
-            marginTop: "16px",
-          }}
-        >
-          <button
-            className="prev"
-            style={{
-              padding: "8px 16px",
-              backgroundColor: "#E5E7EB",
-              cursor: currentQuestionIndex === 0 ? "not-allowed" : "pointer",
-              opacity: currentQuestionIndex === 0 ? 0.5 : 1,
-            }}
-            onClick={handlePrevious}
-            disabled={currentQuestionIndex === 0}
-          >
-            Previous
-          </button>
-
-          {currentQuestionIndex === totalQuestions - 1 && (
-            <button
+            <div
               style={{
-                padding: "8px 16px",
-                background: "linear-gradient(to right, #16133d, #6357a5)",
-                color: "white",
-                marginLeft: "10px",
-                borderRadius: "50px",
-                width: "200px",
-                fontSize: "15px",
-                fontWeight: "bold",
-                cursor: (isFormValid && !isSubmitting) ? "pointer" : "not-allowed",
-                opacity: (isFormValid && !isSubmitting) ? 1 : 0.5,
+                display: "flex",
+                justifyContent: "flex-start",
+                marginTop: "24px",
+                gap: "12px",
               }}
-              onClick={handleSubmit}
-              disabled={!isFormValid || isSubmitting}
             >
-              {isSubmitting ? "Submitting..." : "Submit"}
-            </button>
-          )}
-        </div>
+              <button
+                type="button"
+                className="prev"
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#E5E7EB",
+                  cursor: "pointer",
+                }}
+                onClick={handlePrevious}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: "8px 16px",
+                  background: "linear-gradient(to right, #16133d, #6357a5)",
+                  color: "white",
+                  borderRadius: "50px",
+                  width: "200px",
+                  fontSize: "15px",
+                  fontWeight: "bold",
+                  cursor: isSubmitting ? "wait" : "pointer",
+                  opacity: isSubmitting ? 0.8 : 1,
+                }}
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <Question
+              question={currentQuestion ?? questionsData[0]}
+              onAnswer={handleAnswer}
+              selectedAnswer={answers[currentQuestionIndex]?.selected}
+            />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-start",
+                marginTop: "16px",
+              }}
+            >
+              <button
+                type="button"
+                className="prev"
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#E5E7EB",
+                  cursor:
+                    currentQuestionIndex === 0 ? "not-allowed" : "pointer",
+                  opacity: currentQuestionIndex === 0 ? 0.5 : 1,
+                }}
+                onClick={handlePrevious}
+                disabled={currentQuestionIndex === 0}
+              >
+                Previous
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
