@@ -2,9 +2,6 @@ import React, { useState } from "react";
 import ProgressBar from "./ProgressBar";
 import Question from "./Question";
 import Results from "./Results";
-import handleDownloadPdf from "./handleDownloadPdf";
-
-const PDF_UPLOAD_URL = import.meta.env.VITE_PDF_UPLOAD_URL || "http://localhost:3001";
 
 
 const questionsData = [
@@ -1954,37 +1951,6 @@ const Questionnaire = () => {
       const threat = answersList.filter((a) => a.quadrant === "Threat").length;
       const opportunity = answersList.filter((a) => a.quadrant === "Opportunity").length;
 
-      const strengthsList = answersList.filter((a) => a.quadrant === "Strength");
-      const weaknessesList = answersList.filter((a) => a.quadrant === "Weakness");
-      const opportunitiesList = answersList.filter((a) => a.quadrant === "Opportunity");
-      const threatsList = answersList.filter((a) => a.quadrant === "Threat");
-
-      let colouredPdfUrl = "";
-      try {
-        const pdfBlob = handleDownloadPdf(
-          strengthsList,
-          weaknessesList,
-          opportunitiesList,
-          threatsList,
-          fullName,
-          { returnBlob: true }
-        );
-        if (pdfBlob) {
-          const formData = new FormData();
-          formData.append("pdf", pdfBlob, `${fullName.replace(/\s+/g, "_")}_SWOT_Analysis_Results.pdf`);
-          const uploadRes = await fetch(`${PDF_UPLOAD_URL}/api/upload-pdf`, {
-            method: "POST",
-            body: formData,
-          });
-          if (uploadRes.ok) {
-            const { url } = await uploadRes.json();
-            colouredPdfUrl = url;
-          }
-        }
-      } catch (pdfErr) {
-        console.warn("PDF generation or upload failed:", pdfErr);
-      }
-
       const payload = {
         fullName,
         email,
@@ -1993,7 +1959,6 @@ const Questionnaire = () => {
         weakness,
         threat,
         opportunity,
-        ...(colouredPdfUrl && { colouredPdfUrl }),
       };
 
       const response = await fetch(

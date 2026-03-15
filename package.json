@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "server": "node server.js"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -16,12 +15,9 @@
     "@mui/material": "^6.4.6",
     "chart.js": "^4.4.8",
     "chartjs": "^0.3.24",
-    "dotenv": "^17.3.1",
-    "express": "^4.22.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.0",
     "jspdf-autotable": "^5.0.2",
-    "multer": "^1.4.5-lts.1",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.0.0",
