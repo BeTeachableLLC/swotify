@@ -391,14 +391,28 @@ const handleDownloadPdf = (
 
   // Save the PDF or return it for upload flows.
   const now = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const timePart = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  const estParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).formatToParts(now);
+  const partsMap = Object.fromEntries(
+    estParts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+  const datePart = `${partsMap.month}-${partsMap.day}-${partsMap.year}`;
+  const timePart = `${partsMap.hour}-${partsMap.minute}-${partsMap.second}_${partsMap.dayPeriod}`;
   const safeUser = String(user ?? "User")
     .trim()
     .replace(/[^\w-]+/g, "_")
     .replace(/^_+|_+$/g, "") || "User";
-  const fileName = `${safeUser}_SWOT_Analysis_${datePart}_${timePart}.pdf`;
+  const fileName = `${safeUser}_SWOT_Analysis_${datePart}_${timePart}_EST.pdf`;
   if (options?.returnFile) {
     const blob = doc.output("blob");
     return new File([blob], fileName, { type: "application/pdf" });
