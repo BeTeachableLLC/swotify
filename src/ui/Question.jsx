@@ -16,7 +16,8 @@ const Question = ({ question, onAnswer, selectedAnswer }) => {
           marginTop: "60px",
           maxWidth: "600px",
           width: "600px",
-          fontSize: "18px"
+          fontSize: "18px",
+          color: "white",
         }}
         className=" quest text-lg font-bold mb-4"
       >
@@ -31,8 +32,9 @@ const Question = ({ question, onAnswer, selectedAnswer }) => {
           alignItems: "flex-start",
         }}
       >
-        {question.options.map((option) => (
+        {question.options.map((option, index) => (
           <div
+            key={`${question.id}-${option.label}-${index}`}
             style={{
               display: "flex",
               flexDirection: "row",
@@ -41,7 +43,6 @@ const Question = ({ question, onAnswer, selectedAnswer }) => {
             }}
           >
             <button
-              key={option.label}
               className="opts"
               onClick={() => onAnswer(option)}
               style={{
@@ -70,7 +71,7 @@ const Question = ({ question, onAnswer, selectedAnswer }) => {
             </button>
             <div>
               <>
-                <p style={{ fontSize: "16px",}}>{option.label}</p>
+                <p style={{ fontSize: "16px", color: "white" }}>{option.label}</p>
               </>
             </div>
           </div>

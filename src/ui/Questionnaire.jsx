@@ -2,6 +2,10 @@ import React, { useState } from "react";
 import ProgressBar from "./ProgressBar";
 import Question from "./Question";
 import Results from "./Results";
+import toast from "react-hot-toast";
+import handleDownloadPdfBW from "./handleDownloadPdfBW";
+import { normalizeSwotQuadrant } from "../lib/swotQuadrant";
+import { buildNarrativeFeedbacksFromAnswers } from "../lib/generateSwotNarrativeFeedbacks";
 
 
 const questionsData = [
@@ -1752,6 +1756,7 @@ const Questionnaire = () => {
   const [answers, setAnswers] = useState({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadPdfStatus, setUploadPdfStatus] = useState("");
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -1937,19 +1942,34 @@ const Questionnaire = () => {
     const phone = formData.phone?.trim() ?? "";
 
     if (!fullName || !email || !phone) {
-      alert("Please enter Full Name, Email, and Phone before submitting.");
+      toast.error("Please enter Full Name, Email, and Phone before submitting.");
       return;
     }
 
     setIsSubmitting(true);
+    setUploadPdfStatus("Preparing submission...");
     try {
-      const answersList = Array.from({ length: totalQuestions }, (_, i) => answers[i]).filter(
-        (a) => a && a.quadrant
-      );
+      const SWOT_KEYS = ["Strength", "Weakness", "Opportunity", "Threat"];
+      const answersList = Array.from({ length: totalQuestions }, (_, i) => answers[i])
+        .filter((a) => a && a.quadrant)
+        .map((a) => ({
+          ...a,
+          quadrant: normalizeSwotQuadrant(a.quadrant),
+        }))
+        .filter((a) => SWOT_KEYS.includes(a.quadrant));
+
       const strength = answersList.filter((a) => a.quadrant === "Strength").length;
       const weakness = answersList.filter((a) => a.quadrant === "Weakness").length;
       const threat = answersList.filter((a) => a.quadrant === "Threat").length;
       const opportunity = answersList.filter((a) => a.quadrant === "Opportunity").length;
+
+      const strengthsList = answersList.filter((a) => a.quadrant === "Strength");
+      const weaknessesList = answersList.filter((a) => a.quadrant === "Weakness");
+      const opportunitiesList = answersList.filter((a) => a.quadrant === "Opportunity");
+      const threatsList = answersList.filter((a) => a.quadrant === "Threat");
+
+      const { feedback1, feedback2, feedback3, feedback4, swotifyResultsJson } =
+        buildNarrativeFeedbacksFromAnswers(answers, totalQuestions);
 
       const payload = {
         fullName,
@@ -1959,29 +1979,85 @@ const Questionnaire = () => {
         weakness,
         threat,
         opportunity,
+        feedback1,
+        feedback2,
+        feedback3,
+        feedback4,
       };
 
-      const response = await fetch(
-        "https://services.leadconnectorhq.com/hooks/MJHmir5Xkxz4EWxcOEj3/webhook-trigger/23EaRw19TjCgaK8wGoJ3",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        }
+      console.log("swotifyResultsJson", swotifyResultsJson);
+      console.log("swotifyResultsMeta", {
+        answersCount: answersList.length,
+        jsonLength: swotifyResultsJson.length,
+      });
+
+      setUploadPdfStatus("Creating/updating contact...");
+      const upsertResponse = await fetch("/api/ghl/upsert-contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fullName, email, phone, swotifyResultsJson }),
+      });
+      const upsertData = await upsertResponse.json();
+      if (!upsertResponse.ok || !upsertData?.contactId) {
+        throw new Error(upsertData?.error || "Failed to create/update contact.");
+      }
+
+      setUploadPdfStatus("Generating Black & White PDF for contact upload...");
+      const fileToUpload = handleDownloadPdfBW(
+        strengthsList,
+        weaknessesList,
+        opportunitiesList,
+        threatsList,
+        fullName,
+        { returnFile: true }
       );
 
+      if (!fileToUpload) {
+        throw new Error("Failed to generate Black & White PDF.");
+      }
+
+      setUploadPdfStatus("Uploading Black & White PDF to contact...");
+      const uploadBody = new FormData();
+      uploadBody.append("contactId", upsertData.contactId);
+      uploadBody.append("file", fileToUpload);
+
+      const uploadResponse = await fetch("/api/ghl/contact-file-upload", {
+        method: "POST",
+        body: uploadBody,
+      });
+      const uploadData = await uploadResponse.json();
+      if (!uploadResponse.ok) {
+        const details =
+          uploadData?.extra?.body ||
+          uploadData?.extra?.message ||
+          JSON.stringify(uploadData);
+        throw new Error(`${uploadData?.error || "Failed to upload PDF"}: ${details}`);
+      }
+
+      setUploadPdfStatus("Triggering workflow...");
+      const response = await fetch("/api/ghl/trigger-workflow", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
       if (response.ok) {
+        toast.success("Submitted and Black & White PDF uploaded to contact.");
+        setUploadPdfStatus("Submitted and Black & White PDF uploaded to contact.");
         setIsSubmitted(true);
       } else {
         const errText = await response.text();
         console.error("Error submitting form:", response.status, errText);
-        alert("Submission failed. Please try again or check your connection.");
+        throw new Error("Submission failed. Please try again.");
       }
     } catch (error) {
       console.error("Error:", error);
-      alert("Something went wrong. Please check your connection and try again.");
+      toast.error(error?.message || "Something went wrong. Please try again.");
+      setUploadPdfStatus("Submit failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -2009,7 +2085,7 @@ const Questionnaire = () => {
         className="headd"
       >
         <img
-          src="./logo-white-2.png"
+          src="/logo-white-2.png"
           alt="logo-img"
           width={188.78}
           height={48}
@@ -2107,6 +2183,12 @@ const Questionnaire = () => {
                   style={{ color: "white", padding: "10px" }}
                   required
                 />
+                <small style={{ color: "white", opacity: 0.85 }}>
+                  On submit, we will generate and upload the Black & White PDF to the contact automatically.
+                </small>
+                {uploadPdfStatus ? (
+                  <p style={{ color: "white", fontSize: "13px", margin: 0 }}>{uploadPdfStatus}</p>
+                ) : null}
               </div>
             </div>
             <div

@@ -7,7 +7,8 @@ const handleDownloadPdf = (
   weaknessesList,
   opportunitiesList,
   threatsList,
-  user
+  user,
+  options = {}
 ) => {
   const doc = new jsPDF();
 
@@ -65,7 +66,10 @@ const handleDownloadPdf = (
   // const title1X = (210 - title1Width) / 2; // Center horizontally on the A4 page (210mm width)
   // doc.text(title1, title1X, 20); // Y position is 20mm
 
-  doc.addImage(logo, "PNG", 75, 10, 60, 20); // Adjust position and size as needed
+  const logoSrc = typeof logo === "string" ? logo : logo?.src;
+  if (logoSrc) {
+    doc.addImage(logoSrc, "PNG", 75, 10, 60, 20); // Adjust position and size as needed
+  }
 
   // Set up for the second title
   doc.setFont("helvetica", "bold");
@@ -385,8 +389,21 @@ const handleDownloadPdf = (
 
   addFooter(doc);
 
-  // Save the PDF
-  doc.save(user + " " + "SWOT_Analysis_Results.pdf");
+  // Save the PDF or return it for upload flows.
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const timePart = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  const safeUser = String(user ?? "User")
+    .trim()
+    .replace(/[^\w-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "User";
+  const fileName = `${safeUser}_SWOT_Analysis_${datePart}_${timePart}.pdf`;
+  if (options?.returnFile) {
+    const blob = doc.output("blob");
+    return new File([blob], fileName, { type: "application/pdf" });
+  }
+  doc.save(fileName);
 };
 
 export default handleDownloadPdf;

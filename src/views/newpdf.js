@@ -11,7 +11,8 @@ const newpdf = (
     sortedCombined,
     childWithColorsPdf,
     parentWithColorsPdf,
-    adultWithColorsPdf
+    adultWithColorsPdf,
+    options = {}
 ) => {
     const doc = new jsPDF();
     let pageNumber = 1;
@@ -23,7 +24,7 @@ const newpdf = (
         doc.roundedRect(5, 5, 200, 287, 10, 10, "S");
     };
 
-    const addSoftBackground = (color = [22, 0, 57]) => {
+    const addSoftBackground = (color = [99, 87, 165]) => {
         doc.setFillColor(...color);
         doc.rect(0, 0, 210, 297, "F");
     };
@@ -31,7 +32,7 @@ const newpdf = (
     const addFooter = () => {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(256, 256, 256);
         doc.text("www.beteachable.com", 105, 285, { align: "center" });
         doc.text(`Page ${pageNumber}`, 105, 290, { align: "center" });
     };
@@ -193,12 +194,12 @@ const newpdf = (
             let currentY = 30;
             doc.setDrawColor(0, 0, 0);
             doc.setLineWidth(0.5);
-            doc.setFillColor(255, 255, 255); // White background
+            doc.setFillColor(19, 26, 42); // White background
             doc.roundedRect(10, currentY, 190, 20, 10, 10, "FD");
 
             doc.setFont("helvetica", "bold");
             doc.setFontSize(18);
-            doc.setTextColor(0, 0, 0); // Black text
+            doc.setTextColor(256, 256, 256); // Black text
             doc.text(`Personality Feedback ${index + 1}`, 15, currentY + 12);
 
 
@@ -283,13 +284,16 @@ const newpdf = (
     addSoftBackground();
     drawPageBorder();
 
-    // Add logo first
-    doc.addImage(logo, "PNG", 75, 10, 60, 20);
+    // In Next.js image imports can be objects like { src, ... }.
+    const logoSrc = typeof logo === "string" ? logo : logo?.src;
+    if (logoSrc) {
+        doc.addImage(logoSrc, "PNG", 75, 10, 60, 20);
+    }
 
     // SWOT Analysis title
     doc.setFont("helvetica", "bold");
     doc.setFontSize(25);
-    doc.setTextColor(236, 66, 244);
+    doc.setTextColor(19, 26, 42);
     doc.text(userDetails.name + " " + "Strengths-Matrix Result", 105, currentY, { align: "center" });
     currentY += 15;
 
@@ -308,7 +312,14 @@ const newpdf = (
     addFeedbackSection(feedbackData);
 
     addFooter();
-    doc.save(userDetails.name + " " + "Strengths-Matrix Result.pdf");
+    const safeName = userDetails?.fullName || userDetails?.name || "User";
+    const fileName = `${safeName} Strengths-Matrix Result.pdf`;
+    if (options?.returnFile) {
+        const blob = doc.output("blob");
+        return new File([blob], fileName, { type: "application/pdf" });
+    }
+    doc.save(fileName);
+    return null;
 };
 
 export default newpdf;

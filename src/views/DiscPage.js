@@ -1,17 +1,20 @@
 /* eslint-disable no-unused-vars */
+"use client";
 import React, { useState, useEffect, useRef } from "react";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
 // import Table from "../Components/Table";
-import "../App.css";
 // import { data } from "autoprefixer";
 import { colors } from "@mui/material";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 // import { useReactToPrint } from "react-to-print";
-
+import newpdfBW from './newpdfBW';
 import newpdf from "./newpdf";
+import Footer from "../Components/Footer";
+import Header from "../Components/Header";
+import toast from "react-hot-toast";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -719,12 +722,26 @@ const App = () => {
   const [identity3, setIdentity3] = useState("");
   const [identity4, setIdentity4] = useState("");
   const [userDetails, setUserDetails] = useState({
-    name: "",
+    fullName: "",
     email: "",
     phone: "",
-  });
+    childResult: "",
+    parentResult: "",
+    adultResult: "",
+    totalResult: "",
+    feedback1: "",
+    feedback2: "",
+    feedback3: "",
+    feedback4: "",
+  })
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadPdfStatus, setUploadPdfStatus] = useState("");
+  const [selectedPdfFile, setSelectedPdfFile] = useState(null);
+  const [uploadPdfToContact, setUploadPdfToContact] = useState(true);
   const chartRef = useRef(null);
   const [isGenerating, setIsGenerating] = useState(false); // State to track PDF generation
+  const [isGenerating2, setIsGenerating2] = useState(false); // State to track PDF generation
 
   const [childPdfValue, setChildPdfValue] = useState([]);
   const [parentPdfValue, setParentPdfValue] = useState([]);
@@ -735,8 +752,12 @@ const App = () => {
   const [feedback2, setFeedback2] = useState("");
   const [feedback3, setFeedback3] = useState("");
   const [feedback4, setFeedback4] = useState("");
+  const didInitFeedback1 = useRef(false);
+  const didInitFeedback2 = useRef(false);
+  const didInitFeedback3 = useRef(false);
+  const didInitFeedback4 = useRef(false);
 
-  
+
   const handleAnswerSelection = (questionId, selectedOption) => {
     // Store answer and its weight in state
     setAnswers((prev) => ({
@@ -765,6 +786,17 @@ const App = () => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setUserDetails((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handlePdfFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    if (file && file.type !== "application/pdf") {
+      toast.error("Please choose a PDF file.");
+      setSelectedPdfFile(null);
+      return;
+    }
+    setSelectedPdfFile(file);
+    if (file) toast.success("PDF selected.");
   };
 
   const handlePreviousQuestion = () => {
@@ -812,18 +844,18 @@ const App = () => {
     (${overallStep} of ${overallTotal})`;
   };
 
-  console.log(currentSection);
+  // console.log(currentSection);
   const profiling = () => {
     if (currentSection === 0) {
       return (
         <>
           <p
             className="topicHeader"
-            style={{ fontSize: "18px", fontWeight: "bolder" }}
+            style={{ fontSize: "18px", fontWeight: "bolder", color: "white" }}
           >
             How I Respond Under Intense Pressure
           </p>
-          <p className="intro" style={{ maxWidth: "40vw", fontSize: "12px" }}>
+          <p className="intro" style={{ maxWidth: "40vw", fontSize: "12px", color: "white" }}>
             Each question below is divided into two statements. Choose the
             statement in either column that best describes how you feel under
             intense stress. There are no wrong answers. . For example: On
@@ -839,11 +871,11 @@ const App = () => {
         <>
           <p
             className="topicHeader"
-            style={{ fontSize: "18px", fontWeight: "bolder" }}
+            style={{ fontSize: "18px", fontWeight: "bolder", color: "white" }}
           >
             What I Think I Should Do
           </p>
-          <p className="intro" style={{ maxWidth: "40vw", fontSize: "12px" }}>
+          <p className="intro" style={{ maxWidth: "40vw", fontSize: "12px", color: "white" }}>
             Each question below is divided into two statements. Choose the
             statement in either column that best describes what you think you
             should do (or how you think others want you be).There are no wrong
@@ -860,11 +892,11 @@ const App = () => {
         <>
           <p
             className="topicHeader"
-            style={{ fontSize: "18px", fontWeight: "bolder" }}
+            style={{ fontSize: "18px", fontWeight: "bolder", color: "white" }}
           >
             What I Am Comfortable Doing
           </p>
-          <p className="intro" style={{ maxWidth: "40vw", fontSize: "12px" }}>
+          <p className="intro" style={{ maxWidth: "40vw", fontSize: "12px", color: "white" }}>
             Each question below is divided into two statements. Choose the
             statement in either column that best describes what you are
             comfortable doing. There are no wrong answers. For example: On
@@ -899,44 +931,182 @@ const App = () => {
       }
     });
 
-    console.log(resultCounts);
+    // console.log(resultCounts);
     return resultCounts;
   };
 
-  const WEBHOOK_URL =
-    "https://services.leadconnectorhq.com/hooks/MJHmir5Xkxz4EWxcOEj3/webhook-trigger/23EaRw19TjCgaK8wGoJ3";
+  const buildSubmissionPayload = () => ({
+    ...userDetails,
+    ChildResult: `${childWithColorsPdf
+      .map((item) => `Value: ${item.value}, Color: ${item.color}, Action: ${item.profile}`)
+      .join("\n")}`,
+    ParentResult: `${parentWithColorsPdf
+      .map((item) => `Value: ${item.value}, Color: ${item.color}, Action: ${item.profile}`)
+      .join("\n")}`,
+    AdultResult: `${adultWithColorsPdf
+      .map((item) => `Value: ${item.value}, Color: ${item.color}, Action: ${item.profile}`)
+      .join("\n")}`,
+    TotalResult: `${sortedCombined
+      .map((item) => `Result:${item.result}, Color:${item.name}, Action:${item.value}`)
+      .join("\n ")}`,
+    Feedback1:
+      correspondingColor === "red"
+        ? "You are a highly driven and goal-oriented individual focused on achieving tangible results. You have a direct communication style and are confident in your abilities, often taking a competitive approach to tasks and projects. Your key strengths lie in your ability to make decisions, achieve goals, and take calculated risks."
+        : correspondingColor === "yellow"
+          ? "You are a vibrant and sociable individual who thrives on human connection and spontaneity. Your orientation is people-focused, with results taking a secondary priority. You are enthusiastic, expressive, and enjoy engaging in lively conversations. Your key strengths include strong communication skills, adaptability, and optimistic outlook."
+          : correspondingColor === "blue"
+            ? "You are a sincere and thoughtful individual who takes great pride in being a good listener and problem-solver. Your focus is on making things better and maintaining harmony, often taking on the role of peacekeeper. Your key strengths include your ability to listen attentively, your patience, and your skill in evaluating alternatives."
+            : correspondingColor === "green"
+              ? "You are an analytical individual who values consistency, caution, and high standards. You carefully consider your decisions and actions, preferring to look before you leap. Your key strengths lie in your analytical abilities, accuracy, and commitment to maintaining high standards."
+              : "",
+    Feedback2:
+      secondHighestColor === "red"
+        ? "You are a highly driven and goal-oriented individual focused on achieving tangible results. You have a direct communication style and are confident in your abilities, often taking a competitive approach to tasks and projects. Your key strengths lie in your ability to make decisions, achieve goals, and take calculated risks."
+        : secondHighestColor === "yellow"
+          ? "You are a vibrant and sociable individual who thrives on human connection and spontaneity. Your orientation is people-focused, with results taking a secondary priority. You are enthusiastic, expressive, and enjoy engaging in lively conversations. Your key strengths include strong communication skills, adaptability, and optimistic outlook."
+          : secondHighestColor === "blue"
+            ? "You are a sincere and thoughtful individual who takes great pride in being a good listener and problem-solver. Your focus is on making things better and maintaining harmony, often taking on the role of peacekeeper. Your key strengths include your ability to listen attentively, your patience, and your skill in evaluating alternatives."
+            : secondHighestColor === "green"
+              ? "You are an analytical individual who values consistency, caution, and high standards. You carefully consider your decisions and actions, preferring to look before you leap. Your key strengths lie in your analytical abilities, accuracy, and commitment to maintaining high standards."
+              : "",
+    Feedback3:
+      thirdHighestColor === "red"
+        ? "You are a highly driven and goal-oriented individual focused on achieving tangible results. You have a direct communication style and are confident in your abilities, often taking a competitive approach to tasks and projects. Your key strengths lie in your ability to make decisions, achieve goals, and take calculated risks."
+        : thirdHighestColor === "yellow"
+          ? "You are a vibrant and sociable individual who thrives on human connection and spontaneity. Your orientation is people-focused, with results taking a secondary priority. You are enthusiastic, expressive, and enjoy engaging in lively conversations. Your key strengths include strong communication skills, adaptability, and optimistic outlook."
+          : thirdHighestColor === "blue"
+            ? "You are a sincere and thoughtful individual who takes great pride in being a good listener and problem-solver. Your focus is on making things better and maintaining harmony, often taking on the role of peacekeeper. Your key strengths include your ability to listen attentively, your patience, and your skill in evaluating alternatives."
+            : thirdHighestColor === "green"
+              ? "You are an analytical individual who values consistency, caution, and high standards. You carefully consider your decisions and actions, preferring to look before you leap. Your key strengths lie in your analytical abilities, accuracy, and commitment to maintaining high standards."
+              : "",
+    Feedback4:
+      fourthHighestColor === "red"
+        ? "You are a highly driven and goal-oriented individual focused on achieving tangible results. You have a direct communication style and are confident in your abilities, often taking a competitive approach to tasks and projects. Your key strengths lie in your ability to make decisions, achieve goals, and take calculated risks."
+        : fourthHighestColor === "yellow"
+          ? "You are a vibrant and sociable individual who thrives on human connection and spontaneity. Your orientation is people-focused, with results taking a secondary priority. You are enthusiastic, expressive, and enjoy engaging in lively conversations. Your key strengths include strong communication skills, adaptability, and optimistic outlook."
+          : fourthHighestColor === "blue"
+            ? "You are a sincere and thoughtful individual who takes great pride in being a good listener and problem-solver. Your focus is on making things better and maintaining harmony, often taking on the role of peacekeeper. Your key strengths include your ability to listen attentively, your patience, and your skill in evaluating alternatives."
+            : fourthHighestColor === "green"
+              ? "You are an analytical individual who values consistency, caution, and high standards. You carefully consider your decisions and actions, preferring to look before you leap. Your key strengths lie in your analytical abilities, accuracy, and commitment to maintaining high standards."
+              : "",
+  });
 
   const handleSubmit = async () => {
-    if (!userDetails.name || !userDetails.email || !userDetails.phone) {
-      alert("Please fill in all fields before submitting.");
+    console.log("Quiz Submitted", answers);
+    if (!userDetails.fullName || !userDetails.email || !userDetails.phone) {
+      toast.error("Please fill in all fields before submitting.");
       return;
     }
-    const allQuestions = questionsUpdate.flatMap((s) => s.questions);
-    const answersArray = Object.entries(answers).map(([questionId, selectedOption]) => {
-      const q = allQuestions.find((qu) => qu.id === parseInt(questionId, 10));
-      return {
-        questionId: parseInt(questionId, 10),
-        question: q?.question ?? "",
-        selected: selectedOption,
-      };
-    });
-    const payload = {
-      fullName: userDetails.name.trim(),
-      email: userDetails.email.trim(),
-      phone: userDetails.phone.trim(),
-      formType: "disc",
-      answers: answersArray,
-    };
+
+    const formData = buildSubmissionPayload();
+
+    setIsSubmitting(true);
+    setUploadPdfStatus("Creating/updating contact...");
+    console.log(formData);
     try {
-      await fetch(WEBHOOK_URL, {
+      // 1) Create/Update contact and get contactId
+      const upsertResponse = await fetch("/api/ghl/upsert-contact", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
       });
-    } catch (err) {
-      console.error("Webhook error:", err);
+      const upsertData = await upsertResponse.json();
+      if (!upsertResponse.ok || !upsertData?.contactId) {
+        throw new Error(upsertData?.error || "Failed to create/update contact");
+      }
+
+      // 2) Optional PDF upload (toggle-driven)
+      if (uploadPdfToContact) {
+        let fileToUpload = selectedPdfFile;
+
+        if (!fileToUpload) {
+          setUploadPdfStatus("Generating PDF to upload...");
+          const colorToIdentity = (color) => {
+            if (color === "red")
+              return "Decision Makers, Goal Oriented, Result Driven";
+            if (color === "yellow")
+              return "Communicators, Participants, Adaptable";
+            if (color === "blue") return "Patient, Problem Solver, Good Listener";
+            if (color === "green") return "Accurate, Consistent, Analytical";
+            return "";
+          };
+
+          // Use the same feedback strings we send to your workflow (buildSubmissionPayload).
+          // `newpdf` uses `identity` to decide what to render; feedback just needs to be truthy.
+          const generatedFile = newpdf(
+            userDetails,
+            formData.Feedback1,
+            colorToIdentity(correspondingColor),
+            formData.Feedback2,
+            colorToIdentity(secondHighestColor),
+            formData.Feedback3,
+            colorToIdentity(thirdHighestColor),
+            formData.Feedback4,
+            colorToIdentity(fourthHighestColor),
+            sortedCombined,
+            childWithColorsPdf,
+            parentWithColorsPdf,
+            adultWithColorsPdf,
+            { returnFile: true }
+          );
+
+          if (!generatedFile) {
+            throw new Error("PDF generation failed");
+          }
+
+          fileToUpload = generatedFile;
+        }
+
+        setUploadPdfStatus(fileToUpload === selectedPdfFile ? "Uploading selected PDF..." : "Uploading generated PDF...");
+        const body = new FormData();
+        body.append("contactId", upsertData.contactId);
+        body.append("file", fileToUpload);
+
+        const uploadResponse = await fetch("/api/ghl/contact-file-upload", {
+          method: "POST",
+          body,
+        });
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          const details =
+            uploadData?.extra?.body ||
+            uploadData?.extra?.message ||
+            JSON.stringify(uploadData);
+          throw new Error(`${uploadData?.error || "Failed to upload PDF"}: ${details}`);
+        }
+      }
+
+      // 3) Keep existing workflow effects as-is
+      setUploadPdfStatus("Triggering workflow...");
+      const webhookResponse = await fetch("/api/ghl/trigger-workflow", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+      if (!webhookResponse.ok) {
+        throw new Error("Workflow webhook call failed");
+      }
+
+      setUploadPdfStatus(
+        uploadPdfToContact
+          ? "Submitted and PDF processed/uploaded successfully."
+          : "Submitted successfully."
+      );
+      toast.success(
+        uploadPdfToContact ? "Submitted and PDF processed/uploaded." : "Submitted successfully."
+      );
+      setShowResults(true);
+    } catch (error) {
+      console.error('Error submitting user details:', error);
+      setUploadPdfStatus("Submit/PDF upload failed. Please try again.");
+      toast.error(error.message || "Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-    setShowResults(true);
   };
 
   const handleRetake = () => {
@@ -945,6 +1115,14 @@ const App = () => {
     setAnswers({});
     setShowResults(false);
     setShowResultsFinal(false);
+    setFeedback("");
+    setFeedback2("");
+    setFeedback3("");
+    setFeedback4("");
+    didInitFeedback1.current = false;
+    didInitFeedback2.current = false;
+    didInitFeedback3.current = false;
+    didInitFeedback4.current = false;
   };
 
   const allQuestionsAnswered =
@@ -987,30 +1165,30 @@ const App = () => {
   const thirdHighestColor = colorsArray[thirdHighestIndex];
   const fourthHighestColor = colorsArray[fourthHighestIndex];
 
-  console.log(valueIndexPairs);
-  console.log("Values Array:", valuesArray);
-  console.log("Colors Array:", colorsArray);
-  console.log(`2nd Highest Color: ${secondHighestColor}`);
-  console.log(`3rd Highest Color: ${thirdHighestColor}`);
-  console.log(`4th Highest Color: ${fourthHighestColor}`);
+  // console.log(valueIndexPairs);
+  // console.log("Values Array:", valuesArray);
+  // console.log("Colors Array:", colorsArray);
+  // console.log(`2nd Highest Color: ${secondHighestColor}`);
+  // console.log(`3rd Highest Color: ${thirdHighestColor}`);
+  // console.log(`4th Highest Color: ${fourthHighestColor}`);
 
   // Step 2: Get the corresponding color from the colors array
   const correspondingColor = colorsArray[maxIndex];
 
-  console.log(
-    `Highest value: ${maxValue}, Position: ${maxIndex}, Color: ${correspondingColor}`
-  );
-  console.log(colorsArray[0]);
-  console.log(colors);
+  // console.log(
+  //   `Highest value: ${maxValue}, Position: ${maxIndex}, Color: ${correspondingColor}`
+  // );
+  // console.log(colorsArray[0]);
+  // console.log(colors);
 
-  const ColorFeedback = () => {
+  const ColorFeedback = React.useCallback(() => {
     // const [feedback, setFeedback] = useState("");
     // const [feedback2, setFeedback2] = useState("");
     // const [feedback3, setFeedback3] = useState("");
     // const [feedback4, setFeedback4] = useState("");
 
     // setIdentity(setFeedback);
-    console.log(feedback);
+    // console.log(feedback);
     const colors = [
       {
         name: "Red",
@@ -1039,7 +1217,7 @@ const App = () => {
     ];
 
     const sortedColors = [...colors].sort((a, b) => b.result - a.result);
-    console.log("sorted", sortedColors);
+    // console.log("sorted", sortedColors);
     // Helper function to convert hex color to an integer value
     const hexToInt = (hex) => parseInt(hex.slice(1), 16);
 
@@ -1051,6 +1229,8 @@ const App = () => {
 
     // Generate feedback message based on the highest color value
     useEffect(() => {
+      if (didInitFeedback1.current) return;
+      didInitFeedback1.current = true;
       // const highestColor = getHighestColor();
       if (correspondingColor === "red") {
         setIdentity("Decision Makers, Goal Oriented, Result Driven");
@@ -1405,6 +1585,8 @@ const App = () => {
     }, []);
 
     useEffect(() => {
+      if (didInitFeedback2.current) return;
+      didInitFeedback2.current = true;
       const highestColor = getHighestColor();
       if (secondHighestColor === "red") {
         setIdentity2("Decision Makers, Goal Oriented, Result Driven");
@@ -1759,6 +1941,8 @@ const App = () => {
     }, []);
 
     useEffect(() => {
+      if (didInitFeedback3.current) return;
+      didInitFeedback3.current = true;
       const highestColor = getHighestColor();
       if (thirdHighestColor === "red") {
         setIdentity3("Decision Makers, Goal Oriented, Result Driven");
@@ -2113,6 +2297,8 @@ const App = () => {
     }, []);
 
     useEffect(() => {
+      if (didInitFeedback4.current) return;
+      didInitFeedback4.current = true;
       const highestColor = getHighestColor();
       if (fourthHighestColor === "red") {
         setIdentity4("Decision Makers, Goal Oriented, Result Driven");
@@ -2476,52 +2662,52 @@ const App = () => {
 
     return (
       <div className="feedbackCol">
-        <h2>Total Result</h2>
+        <h2 style={{ color: "white" }}>Total Result</h2>
         <div className="container mx-auto p-4">
-            <div className="custom-box colorBox">
-              <table className="min-w-full border-collapse border border-gray-300 mb-4">
-                <thead>
-                  <tr>
-                    <th className="border border-gray-300 px-4 py-2 text-left">
-                      Color
-                    </th>
-                    <th className="border border-gray-300 px-4 py-2 text-left"></th>
-                    <th className="border border-gray-300 px-4 py-2 text-left">
-                      Profile
-                    </th>
-                    <th className="border border-gray-300 px-4 py-2 text-left">
-                      Score
-                    </th>
+          <div className="custom-box colorBox">
+            <table className="min-w-full border-collapse border border-gray-300 mb-4">
+              <thead>
+                <tr>
+                  <th className="border border-gray-300 px-4 py-2 text-left">
+                    Color
+                  </th>
+                  <th className="border border-gray-300 px-4 py-2 text-left"></th>
+                  <th className="border border-gray-300 px-4 py-2 text-left">
+                    Profile
+                  </th>
+                  <th className="border border-gray-300 px-4 py-2 text-left">
+                    Score
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedCombined.map((color, index) => (
+                  <tr key={index}>
+                    <td className="border border-gray-300 px-4 py-2">
+                      {color.name}
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2">
+                      <div
+                        style={{
+                          backgroundColor: color.code,
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "4px",
+                        }}
+                      />
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2 profileHead">
+                      {color.value}
+                    </td>
+                    <td className="border border-gray-300 px-4 py-2">
+                      {color.result}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {sortedCombined.map((color, index) => (
-                    <tr key={index}>
-                      <td className="border border-gray-300 px-4 py-2">
-                        {color.name}
-                      </td>
-                      <td className="border border-gray-300 px-4 py-2">
-                        <div
-                          style={{
-                            backgroundColor: color.code,
-                            width: "30px",
-                            height: "30px",
-                            borderRadius: "4px",
-                          }}
-                        />
-                      </td>
-                      <td className="border border-gray-300 px-4 py-2 profileHead">
-                        {color.value}
-                      </td>
-                      <td className="border border-gray-300 px-4 py-2">
-                        {color.result}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          
+                ))}
+              </tbody>
+            </table>
+          </div>
+
         </div>
 
         {/* Feedback Section */}
@@ -2606,9 +2792,9 @@ const App = () => {
         </div>
       </div>
     );
-  };
+  }, [correspondingColor, secondHighestColor, thirdHighestColor, fourthHighestColor]);
 
-  const ColorFeedback2 = () => {
+  const ColorFeedback2 = React.useCallback(() => {
     // const [feedback2, setFeedback2] = useState('');
 
     const colors = [
@@ -2835,7 +3021,7 @@ const App = () => {
 
     return (
       <div className="feedbackCol">
-        <h2>What You Prefer To Do/How You Are Effective</h2>
+        <h2 className="fedHead" style={{ color: "white" }}>What You Prefer To Do/How You Are Effective</h2>
         <div className="container mx-auto p-4 custom-box colorBox">
           {/* <h1 className="text-2xl font-bold mb-4">Color List</h1> */}
           <table
@@ -2905,9 +3091,9 @@ const App = () => {
         </div> */}
       </div>
     );
-  };
+  }, [secondHighestColor]);
 
-  const ColorFeedback3 = () => {
+  const ColorFeedback3 = React.useCallback(() => {
     // const [feedback2, setFeedback2] = useState('');
 
     const colors = [
@@ -2938,7 +3124,7 @@ const App = () => {
     ];
 
     const sortedColors = [...colors].sort((a, b) => b.result - a.result);
-    console.log("total result color, ", sortedColors)
+    // console.log("total result color, ", sortedColors)
 
     // Helper function to convert hex color to an integer value
     const hexToInt = (hex) => parseInt(hex.slice(1), 16);
@@ -3135,7 +3321,7 @@ const App = () => {
 
     return (
       <div className="feedbackCol">
-        <h2>How You React Under Stress</h2>
+        <h2 className="fedHead" style={{ color: "white" }}>How You React Under Stress</h2>
         <div className="container mx-auto p-4 custom-box colorBox">
           {/* <h1 className="text-2xl font-bold mb-4">Color List</h1> */}
           <table
@@ -3205,9 +3391,9 @@ const App = () => {
         </div> */}
       </div>
     );
-  };
+  }, [thirdHighestColor]);
 
-  const ColorFeedback4 = () => {
+  const ColorFeedback4 = React.useCallback(() => {
     // const [feedback2, setFeedback2] = useState('');
 
     const colors = [
@@ -3434,7 +3620,7 @@ const App = () => {
 
     return (
       <div className="feedbackCol">
-        <h2>What You Feel You Ought to Do/How You Should Think</h2>
+        <h2 className="fedHead" style={{ color: "white" }}>What You Feel You Ought to Do/How You Should Think</h2>
         <div className="container mx-auto p-4 custom-box colorBox">
           {/* <h1 className="text-2xl font-bold mb-4">Color List</h1> */}
           <table
@@ -3504,7 +3690,7 @@ const App = () => {
         </div> */}
       </div>
     );
-  };
+  }, [fourthHighestColor]);
 
   const extractFirst20Weights = () => {
     // Flatten all questions across sections
@@ -3596,9 +3782,9 @@ const App = () => {
   const last20Weights = extractLast20Weights();
   const first20Weights = extractFirst20Weights();
   const middle20Weights = extractMiddle20Weights();
-  console.log("first 20 Question Weights:", first20Weights);
-  console.log("middle 20 Question Weights:", middle20Weights);
-  console.log("Last 20 Question Weights:", last20Weights);
+  // console.log("first 20 Question Weights:", first20Weights);
+  // console.log("middle 20 Question Weights:", middle20Weights);
+  // console.log("Last 20 Question Weights:", last20Weights);
 
   const childResult = ["A", "B", "C", "D"].map(
     (value) => first20Weights.filter((item) => item === value).length
@@ -3613,9 +3799,9 @@ const App = () => {
   );
 
 
-  console.log("child", childResult);
-  console.log("parent", parentResult);
-  console.log("adult", adultResult);
+  // console.log("child", childResult);
+  // console.log("parent", parentResult);
+  // console.log("adult", adultResult);
 
   useEffect(() => {
     setChildValue(childResult);
@@ -3623,8 +3809,8 @@ const App = () => {
     setAdultValue(adultResult);
   }, []);
 
-  console.log(valuesArray);
-  console.log(colorsArray);
+  // console.log(valuesArray);
+  // console.log(colorsArray);
 
   // Color assignment based on index
   const resultColors = ['red', 'yellow', 'blue', 'green'];
@@ -3669,9 +3855,9 @@ const App = () => {
   // setParentPdfValue(parentWithColorsPdf)
   // setAdultPdfValue(adultWithColorsPdf)
 
-  console.log('Child Array with Colors:', childWithColorsPdf);
-  console.log('Parent Array with Colors:', parentWithColorsPdf);
-  console.log('Adult Array with Colors:', adultWithColorsPdf);
+  // console.log('Child Array with Colors:', childWithColorsPdf);
+  // console.log('Parent Array with Colors:', parentWithColorsPdf);
+  // console.log('Adult Array with Colors:', adultWithColorsPdf);
 
   // Mapping of colors to the desired names, descriptions, and codes
   const colorMapping = {
@@ -3704,7 +3890,7 @@ const App = () => {
   // Generate the combined array
   const finalArray = combineArrays(childWithColors, parentWithColors, adultWithColors);
   const sortedCombined = finalArray.sort((a, b) => b.result - a.result);
-  console.log("newstest", sortedCombined);
+  // console.log("newstest", sortedCombined);
 
   /** 
   const rows = [
@@ -3790,8 +3976,8 @@ const App = () => {
     setFinalResults(results);
   }, []);
 
-  console.log("Final Results:", finalResults);
-  console.log("higgg", highestColor);
+  // console.log("Final Results:", finalResults);
+  // console.log("higgg", highestColor);
 
   const letterToColor = {
     C: "blue",
@@ -3809,7 +3995,7 @@ const App = () => {
     return acc;
   }, {});
 
-  console.log("Color Counts:", colorCounts);
+  // console.log("Color Counts:", colorCounts);
 
   const FourStrengthsTable = () => {
     const tableData = [
@@ -3886,197 +4072,316 @@ const App = () => {
   };
 
   return (
-    <div className="App">
-      {!showResults ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "start",
-            minWidth: "700px",
-          }}
-        >
-          {/* Render Progress Bar */}
-          <div className="progress-container">
-            <div
-              className="progress-bar"
-              style={{ width: `${calculateProgress()}%` }}
-            />
-          </div>
-          <p>{getCurrentStep()}</p>
-          <p>{profiling()}</p>
-          {/* <h3 style={{ marginTop: "0px" }}>
+    <div className="inn">
+      <div style={{
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '40px',
+        color: 'white',
+        height: '60px',
+        width: '100%',
+        position: 'absolute',
+        top: '0px',
+        left: '0px',
+        // zIndex: '1000',
+        marginBottom: "20px",
+      }} className={`hea ${showResults ? 'last' : ''}`}>
+        <img src='/logo-white-2.png' alt='logo-img' width={188.78} height={48} />
+        {/* <div className='flex flex-row' style={{
+                fontSize: "1.5rem",
+                fontFamily: "Lato",
+                marginRight: "80px",
+            }}>
+               SWOTIFY 
+            </div> */}
+        <div></div>
+      </div>
+      <div className="App">
+        {!showResults ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "start",
+              minWidth: "700px",
+            }}
+            className="inCont"
+          >
+            {/* Render Progress Bar */}
+            <div className="progress-container">
+              <div
+                className="progress-bar"
+                style={{ width: `${calculateProgress()}%` }}
+              />
+            </div>
+            <p style={{ color: "white" }}>{getCurrentStep()}</p>
+            <div className="profiling">{profiling()}</div>
+            {/* <h3 style={{ marginTop: "0px" }}>
             {
               questionsUpdate[currentSection].questions[currentQuestion]
                 .question
             }
           </h3> */}
-          {questionsUpdate[currentSection].questions[
-            currentQuestion
-          ].options.map((option) => (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                flexDirection: "row-reverse",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <p className="options" style={{ fontSize: "18px" }}>
-                {option.text}
-              </p>
-              <button
-                key={option.text}
-                onClick={() =>
-                  handleAnswerSelection(
-                    questionsUpdate[currentSection].questions[currentQuestion]
-                      .id,
-                    option.text
-                  )
-                }
-                className="opts"
-                style={{
-                  backgroundColor:
-                    answers[
-                      questionsUpdate[currentSection].questions[currentQuestion]
-                        .id
-                    ] === option.text
-                      ? `#6357A4`
-                      : "white",
-                  color:
-                    answers[
-                      questionsUpdate[currentSection].questions[currentQuestion]
-                        .id
-                    ] === option.text
-                      ? `white`
-                      : "",
-                  margin: "5px",
-                  padding: "25px",
-                  border: "0.5px solid black",
-                  borderRadius: "15px",
-                  marginTop: "10px",
-                  fontFamily: "Poppins",
-                  fontSize: "20px",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              ></button>
-            </div>
-          ))}
-          <br />
-          {allQuestionsAnswered && currentQuestion === 19 && (
-            <div className="details">
-              <h3>Enter Your Details:</h3>
-              <input
-                type="text"
-                name="name"
-                placeholder="Name"
-                value={userDetails.name}
-                onChange={handleInputChange}
-              />
-              <input
-                type="email"
-                name="email"
-                placeholder="Email"
-                value={userDetails.email}
-                onChange={handleInputChange}
-              />
-              <input
-                type="tel"
-                name="phone"
-                placeholder="Phone"
-                value={userDetails.phone}
-                onChange={handleInputChange}
-              />
-            </div>
-          )}
-
-          <div className="controllBtn">
-            {(currentQuestion > 0 || currentSection > 0) && (
-              <button className="prev" onClick={handlePreviousQuestion}>
-                Previous
-              </button>
-            )}
-
-            {allQuestionsAnswered && (
-              <button className="sub" onClick={handleSubmit}>
-                Submit
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="riz">
-          <h2 className="resultHeader">
-            {userDetails.name}'s Strengths-Matrix Results
-          </h2>
-          <div className="innerResults">
-            <div className="chart charDiv">
+            {questionsUpdate[currentSection].questions[
+              currentQuestion
+            ].options.map((option) => (
               <div
+                key={option.text}
                 style={{
                   display: "flex",
+                  flexWrap: "wrap",
+                  flexDirection: "row-reverse",
                   justifyContent: "center",
-                  gap: "10px", // Space between buttons
-                  marginBottom: "20px",
+                  alignItems: "center",
                 }}
+                className="btnGr"
               >
+                <p className="options" style={{ fontSize: "18px", color: "white" }}>
+                  {option.text}
+                </p>
                 <button
-                  onClick={handleRetake}
-                  // className="retake"
-                  id="download-button2"
+                  onClick={() =>
+                    handleAnswerSelection(
+                      questionsUpdate[currentSection].questions[currentQuestion]
+                        .id,
+                      option.text
+                    )
+                  }
+                  className="opts"
                   style={{
-                    padding: "10px 15px",
-                    backgroundColor: "#FECACA",
+                    backgroundColor:
+                      answers[
+                        questionsUpdate[currentSection].questions[currentQuestion]
+                          .id
+                      ] === option.text
+                        ? `#6357A4`
+                        : "white",
+                    color:
+                      answers[
+                        questionsUpdate[currentSection].questions[currentQuestion]
+                          .id
+                      ] === option.text
+                        ? `white`
+                        : "",
+                    margin: "5px",
+                    padding: "25px",
+                    border: "0.5px solid black",
+                    borderRadius: "15px",
+                    marginTop: "10px",
+                    fontFamily: "Poppins",
+                    fontSize: "20px",
+                    fontWeight: "bold",
                     cursor: "pointer",
-                    border: "none",
-                    height: "50px",
-                    borderRadius: "50px",
-                    fontSize: "14px",
+                  }}
+                ></button>
+              </div>
+            ))}
+            <br />
+            {allQuestionsAnswered && currentQuestion === 19 && (
+              <div className="details">
+                <h3 style={{ color: "white" }}>Enter Your Details:</h3>
+                <input
+                  type="text"
+                  name="fullName"
+                  placeholder="Name"
+                  value={userDetails.fullName}
+                  onChange={handleInputChange}
+                  style={{ color: "white" }}
+                />
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Email"
+                  value={userDetails.email}
+                  onChange={handleInputChange}
+                  style={{ color: "white" }}
+                />
+                <input
+                  type="tel"
+                  name="phone"
+                  placeholder="Phone"
+                  value={userDetails.phone}
+                  onChange={handleInputChange}
+                  style={{ color: "white" }}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginTop: "6px",
+                    marginBottom: "8px",
                   }}
                 >
-                  Retake Test
+                  <input
+                    type="checkbox"
+                    checked={uploadPdfToContact}
+                    onChange={(e) => setUploadPdfToContact(e.target.checked)}
+                    style={{ width: "18px", height: "18px" }}
+                  />
+                  <span style={{ color: "white", fontSize: "14px" }}>
+                    Upload PDF to contact (optional)
+                  </span>
+                </div>
+                <input
+                  id="pdf-file-input"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handlePdfFileChange}
+                  style={{ display: "none" }}
+                />
+                <label
+                  htmlFor="pdf-file-input"
+                  style={{
+                    padding: "12px 18px",
+                    borderRadius: "30px",
+                    border: "1px solid rgba(255,255,255,0.35)",
+                    color: "white",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    background: "rgba(255,255,255,0.08)",
+                    minWidth: "180px",
+                    textAlign: "center",
+                    opacity: uploadPdfToContact ? 1 : 0.5,
+                    pointerEvents: uploadPdfToContact ? "auto" : "none",
+                  }}
+                >
+                  {selectedPdfFile ? "Change PDF" : "Select PDF (optional)"}
+                </label>
+                {uploadPdfToContact && selectedPdfFile && (
+                  <p style={{ color: "white", fontSize: "12px" }}>
+                    Selected file: {selectedPdfFile.name}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="controllBtn">
+              {(currentQuestion > 0 || currentSection > 0) && (
+                <button className="prev" onClick={handlePreviousQuestion}>
+                  Previous
                 </button>
-                {/* <button onClick={generatePDF} className="pdf">Download Result</button> */}
-                {/* Hide button while generating PDF */}
-                {!isGenerating && (
+              )}
+
+              {allQuestionsAnswered && (
+                <button
+                  className="sub"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit'}
+                </button>
+              )}
+
+            </div>
+            {uploadPdfStatus && (
+              <p style={{ color: "white", marginTop: "8px" }}>{uploadPdfStatus}</p>
+            )}
+          </div>
+        ) : (
+          <div className="riz">
+            <h2 className="resultHeader" style={{ color: "white" }}>
+              {userDetails.fullName}'s Strengths-Matrix Results
+            </h2>
+            <div className="innerResults">
+              <div className="chart charDiv">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    gap: "10px", // Space between buttons
+                    marginBottom: "20px",
+                  }}
+                  className="downPdf"
+                >
                   <button
-                    id="download-button"
-                    // className="pdf"
-                    // onClick={generatePDF}
-                    onClick={() => newpdf(userDetails, feedback, identity, feedback2, identity2, feedback3, identity3, feedback4, identity4, sortedCombined, childWithColorsPdf, parentWithColorsPdf, adultWithColorsPdf)}
+                    onClick={handleRetake}
+                    // className="retake"
+                    id="download-button2"
                     style={{
                       padding: "10px 15px",
-                      backgroundColor: "#E5E7EB",
+                      backgroundColor: "#FECACA",
                       cursor: "pointer",
                       border: "none",
-                      borderRadius: "50px",
-                      width: "200px",
                       height: "50px",
-                      fontWeight: "400",
+                      borderRadius: "50px",
                       fontSize: "14px",
                     }}
                   >
-                    Download PDF
+                    Retake Test
                   </button>
-                )}
+                  {/* <button onClick={generatePDF} className="pdf">Download Result</button> */}
+                  {/* Hide button while generating PDF */}
+                  {!isGenerating && (
+                    <button
+                      id="download-button"
+                      // className="pdf"
+                      // onClick={generatePDF}
+                      onClick={() => newpdf(userDetails, feedback, identity, feedback2, identity2, feedback3, identity3, feedback4, identity4, sortedCombined, childWithColorsPdf, parentWithColorsPdf, adultWithColorsPdf)}
+                      style={{
+                        padding: "10px 15px",
+                        backgroundColor: "#E5E7EB",
+                        cursor: "pointer",
+                        border: "none",
+                        borderRadius: "50px",
+                        width: "200px",
+                        height: "50px",
+                        fontWeight: "400",
+                        fontSize: "14px",
+                      }}
+                    >
+                      Download PDF (Coloured)
+                    </button>
+                  )}
 
-                {isGenerating && <p>Generating PDF, please wait...</p>}
+                  {isGenerating && <p>Generating PDF, please wait...</p>}
+
+                  {!isGenerating2 && (
+                    <button
+                      id="download-button"
+                      // className="pdf"
+                      // onClick={generatePDF}
+                      onClick={() => newpdfBW(userDetails, feedback, identity, feedback2, identity2, feedback3, identity3, feedback4, identity4, sortedCombined, childWithColorsPdf, parentWithColorsPdf, adultWithColorsPdf)}
+                      style={{
+                        padding: "10px 15px",
+                        backgroundColor: "#E5E7EB",
+                        cursor: "pointer",
+                        border: "none",
+                        borderRadius: "50px",
+                        width: "200px",
+                        height: "50px",
+                        fontWeight: "400",
+                        fontSize: "14px",
+                      }}
+                    >
+                      Download PDF (Black & White)
+                    </button>
+                  )}
+
+                  {isGenerating2 && <p>Generating PDF, please wait.....</p>}
+
+                </div>
+                {uploadPdfStatus && (
+                  <p style={{ color: "white", marginBottom: "10px" }}>{uploadPdfStatus}</p>
+                )}
+                <Doughnut data={data} className="dou" ref={chartRef} />
               </div>
-              <Doughnut data={data} className="dou" ref={chartRef} />
-            </div>
-            <div style={{ marginBottom: "80px" }} className="feedback">
-              <ColorFeedback3 />
-              <ColorFeedback4 />
-              <ColorFeedback2 />
-              {/* <FourStrengthsTable /> */}
-            </div>
-            <div style={{ marginBottom: "80px" }} className="feedback">
-              <ColorFeedback />
+              <div style={{ marginBottom: "80px" }} className="feedback feds">
+                <ColorFeedback3 />
+                <ColorFeedback4 />
+                <ColorFeedback2 />
+                {/* <FourStrengthsTable /> */}
+              </div>
+              <div style={{ marginBottom: "80px" }} className="feedback feds2">
+                <ColorFeedback />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+      <Footer />
     </div>
   );
 };

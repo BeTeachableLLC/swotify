@@ -2,31 +2,23 @@
 import React, { use } from "react";
 import handleDownloadPdf from "./handleDownloadPdf";
 import handleDownloadPdfBW from "./handleDownloadPdfBW";
+import { normalizeSwotQuadrant } from "../lib/swotQuadrant";
+
+const SWOT_KEYS = ["Strength", "Weakness", "Opportunity", "Threat"];
 
 const Results = ({ user, answers = [], questions = [], onRetakeTest }) => {
-  // Group answers by their quadrant
-  // const groupedResults = {
-  //   Strength: [],
-  //   Weakness: [],
-  //   Opportunity: [],
-  //   Threat: [],
-  // };
+  const answersArray = Array.from({ length: questions?.length ?? 0 }, (_, i) => {
+    const a = answers?.[i];
+    if (!a?.quadrant) return null;
+    const quadrant = normalizeSwotQuadrant(a.quadrant);
+    if (!SWOT_KEYS.includes(quadrant)) return null;
+    return { ...a, quadrant };
+  }).filter(Boolean);
 
-  // Convert the object into an array
-  const answersArray = Object.values(answers);
-
-  const strengthsList = (answersArray || []).filter(
-    (item) => item.quadrant === "Strength"
-  );
-  const weaknessesList = (answersArray || []).filter(
-    (item) => item.quadrant === "Weakness"
-  );
-  const opportunitiesList = (answersArray || []).filter(
-    (item) => item.quadrant === "Opportunity"
-  );
-  const threatsList = (answersArray || []).filter(
-    (item) => item.quadrant === "Threat"
-  );
+  const strengthsList = answersArray.filter((item) => item.quadrant === "Strength");
+  const weaknessesList = answersArray.filter((item) => item.quadrant === "Weakness");
+  const opportunitiesList = answersArray.filter((item) => item.quadrant === "Opportunity");
+  const threatsList = answersArray.filter((item) => item.quadrant === "Threat");
 
   // Debugging: Log the answers and questions
   // console.log(user);
@@ -59,7 +51,7 @@ const Results = ({ user, answers = [], questions = [], onRetakeTest }) => {
     <>
       <div style={{ textAlign: "center", marginTop: "" }} className="riy">
         <img
-          src="./logo-white-2.png"
+          src="/logo-white-2.png"
           alt="logo-img"
           width={188.78}
           height={48}
@@ -81,6 +73,7 @@ const Results = ({ user, answers = [], questions = [], onRetakeTest }) => {
             fontWeight: "bold",
             marginTop: "20px",
             marginBottom: "16px",
+            color: "white",
           }}
         >
           {user} SWOT Analysis Results
